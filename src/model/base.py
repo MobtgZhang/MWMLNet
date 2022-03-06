@@ -11,28 +11,33 @@ import gensim
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-from .lm import MWMLNetLMFineGrind
+from .lm import MWMLNetLMFineGrind,MWMLNetLMClassifier
 from ..data import Dictionary
 
 logger = logging.getLogger()
 
 
 class DocReader:
-    def __init__(self,args_dict,chars_dict,features_dict,state_dict=None):
+    def __init__(self,args_dict,chars_dict,features_dict,labels_dict=None,state_dict=None):
         self.chars_dict = chars_dict
         self.features_dict = features_dict
+        self.labels_dict = labels_dict
         self.bmes_dict = Dictionary(['B','M','E','S'])
         self.config = args_dict
         self.config["vocab_size"] = len(chars_dict)
         self.config["features_size"] = len(features_dict)
-        self.config["n_class"] = 4
-        self.config["type_class"] = 20
         self.config["chars_max_length"] = args_dict["chars_max_length"]
         # Building network. If normalize if false, scores are not normalized
         # 0-1 per paragraph (no softmax).
-        if self.config["model_type"].lower() == 'mwmlnet':
+        if self.config["model_type"].lower() == 'mwmlnetlmfinegrind' and self.config["dataset"].lower()=="aichallenger2018":
+            self.config["n_class"] = 4
+            self.config["type_class"] = 20
             self.network = MWMLNetLMFineGrind(**self.config)
-            print("MWMLNetLMFineGrind")
+            logger.info("Model name:MWMLNetLMFineGrind")
+        elif self.config["model_type"].lower() == 'mwmlnetlmclassifier' and self.config["dataset"].lower()=="cluemotionanalysis2020":
+            self.config["n_class"] = len(self.labels_dict)
+            self.network = MWMLNetLMClassifier(**self.config)
+            logger.info("Model name:MWMLNetLMFineGrind")
         else:
             raise RuntimeError('Unsupported model: %s' % self.config["model_type"])
         self.config["updates"] = 0
@@ -73,6 +78,7 @@ class DocReader:
             'state_dict': state_dict,
             'char_dict': self.chars_dict,
             'feature_dict': self.features_dict,
+            'labels_dict':self.labels_dict,
             'config':self.config
         }
         try:
@@ -87,7 +93,8 @@ class DocReader:
         features_dict = saved_params["features_dict"]
         state_dict = saved_params["state_dict"]
         config = saved_params["config"]
-        model = DocReader(config,chars_dict,features_dict,state_dict)
+        labels_dict = saved_params['labels_dict']
+        model = DocReader(config,chars_dict,features_dict,labels_dict,state_dict)
         model.init_optimizer()
         return model
     def checkpoint(self,save_file_name,epoch):
@@ -95,8 +102,9 @@ class DocReader:
             'state_dict':self.network.cpu().state_dict(),
             'chars_dict':self.chars_dict,
             'features_dict':self.features_dict,
+            'labels_dict':self.labels_dict,
             'config':self.config,
-            'optimizer':self.optimizer，
+            'optimizer':self.optimizer,
             'epoch':epoch
         }
         try:
@@ -115,7 +123,8 @@ class DocReader:
         epoch = saved_params['epoch']
         optimizer = saved_params['optimizer']
         config = saved_params['config']
-        model = DocReader(config, chars_dict, features_dict, state_dict)
+        labels_dict = saved_params['labels_dict']
+        model = DocReader(config,chars_dict,features_dict,labels_dict,state_dict)
         model.init_optimizer(optimizer)
         return model, epoch
     def load_embeddings(self,embedding_file,save_embedding_file):

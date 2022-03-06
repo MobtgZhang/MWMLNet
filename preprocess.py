@@ -25,15 +25,15 @@ def check_args(args):
     result_file_dir = os.path.join(args.out_dir,args.dataset)
     if not os.path.exists(result_file_dir):
         os.makedirs(result_file_dir)
-def process_dataset_aichallenger2018(load_file_name,desc):
+def process_dataset_aichallenger2018(load_file_name,desc,batch_size):
     dataset = pd.read_csv(load_file_name)
-    btz_size = len(dataset) //args.batch_size
+    btz_size = len(dataset) //batch_size
     ltp_m = ltp.LTP()
     all_seg_list = []
     all_pos_list = []
     all_ner_list = []
     for idx in tqdm(range(btz_size),desc="segmenting %s "%desc):
-        sentences = dataset.loc[idx*args.batch_size:(idx+1)*args.batch_size,"content"].values.tolist()
+        sentences = dataset.loc[idx*batch_size:(idx+1)*batch_size,"content"].values.tolist()
         seg_sents,hidden = ltp_m.seg(sentences)
         pos_sents = ltp_m.pos(hidden)
         ner_sents = ltp_m.ner(hidden)
@@ -58,6 +58,41 @@ def process_dataset_aichallenger2018(load_file_name,desc):
         tmp_dict.update(info_dict)
         all_dict_dataset.append(tmp_dict)
     return all_dict_dataset
+def process_dataset_clemotionanalysis2020(load_file_name,desc,batch_size):
+    dataset_ids = []
+    sentences_list = []
+    labels_list = []
+    with open(load_file_name,mode="r",encoding="utf-8") as rfp:
+        for line in rfp:
+            tmp_dict = json.loads(line.strip())
+            dataset_ids.append(tmp_dict['id'])
+            sentences_list.append(tmp_dict['content'])
+            labels_list.append(tmp_dict['label'])
+    btz_size = len(sentences_list) //batch_size
+    ltp_m = ltp.LTP()
+    all_seg_list = []
+    all_pos_list = []
+    all_ner_list = []
+    for idx in tqdm(range(btz_size),desc="segmenting %s "%desc):
+        sentences = sentences_list[idx*args.batch_size:(idx+1)*args.batch_size]
+        seg_sents,hidden = ltp_m.seg(sentences)
+        pos_sents = ltp_m.pos(hidden)
+        ner_sents = ltp_m.ner(hidden)
+        all_seg_list+=seg_sents
+        all_pos_list+=pos_sents
+        all_ner_list+=ner_sents
+    all_dict_dataset = []
+    output = zip(dataset_ids,all_seg_list,all_pos_list,all_ner_list,labels_list)
+    for idx,seg_sent,pos_sent,ner_sent,label in output:
+        tmp_dict = {
+            "id":idx,
+            "segments":seg_sent,
+            "position":pos_sent,
+            "namerecognize":ner_sent,
+            "labels":label
+        }
+        all_dict_dataset.append(tmp_dict)
+    return all_dict_dataset
 def save_dict_file(data_dict_list,save_file_name):
     with open(save_file_name,mode="w",encoding="utf-8") as wfp:
         for item  in data_dict_list:
@@ -70,14 +105,29 @@ def main(args):
         save_train_file_name = os.path.join(args.out_dir,args.dataset,"trainingset.json")
         save_valid_file_name = os.path.join(args.out_dir,args.dataset,"validationset.json")
         if not os.path.exists(save_train_file_name):
-            train_list = process_dataset_aichallenger2018(train_load_file_name,"train dataset")
+            train_list = process_dataset_aichallenger2018(train_load_file_name,"train dataset",batch_size=args.batch_size)
             save_dict_file(train_list,save_train_file_name)
         if not os.path.exists(save_valid_file_name):
-            dev_list = process_dataset_aichallenger2018(dev_load_file_name,"dev dataset")
+            dev_list = process_dataset_aichallenger2018(dev_load_file_name,"dev dataset",batch_size=args.batch_size)
             save_dict_file(dev_list,save_valid_file_name)
+        logger.info("The file saved in (%s,%s)."%(save_train_file_name,save_valid_file_name))
+    elif args.dataset.lower() == "cluemotionanalysis2020":
+        train_load_file_name = os.path.join(args.data_dir,args.dataset,"train.txt")
+        save_train_file_name = os.path.join(args.out_dir,args.dataset,"train.json")
+        valid_load_file_name = os.path.join(args.data_dir,args.dataset,"valid.txt")
+        save_valid_file_name = os.path.join(args.out_dir,args.dataset,"valid.json")
+        test_load_file_name = os.path.join(args.data_dir,args.dataset,"test.txt")
+        save_test_file_name = os.path.join(args.out_dir,args.dataset,"test.json")
+        train_list = process_dataset_clemotionanalysis2020(train_load_file_name,desc="train dataset",batch_size=args.batch_size)
+        valid_list = process_dataset_clemotionanalysis2020(valid_load_file_name,desc="valid dataset",batch_size=args.batch_size)
+        test_list = process_dataset_clemotionanalysis2020(test_load_file_name,desc="test dataset",batch_size=args.batch_size)
+        save_dict_file(train_list,save_train_file_name)
+        save_dict_file(valid_list,save_valid_file_name)
+        save_dict_file(test_list,save_test_file_name)
+        logger.info("The file saved in (%s,%s,%s)."%(save_train_file_name,save_valid_file_name,save_test_file_name))
     else:
         raise ValueError("Unknown dataset %s"%args.dataset)
-    logger.info("The file saved in (%s,%s)."%(save_train_file_name,save_valid_file_name))
+    
 if __name__ == "__main__":
     args = get_args()
     check_args(args)

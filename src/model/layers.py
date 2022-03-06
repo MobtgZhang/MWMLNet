@@ -321,9 +321,6 @@ class FeedForwardNetwork(nn.Module):
     def forward(self,inputs):
         hid = self.gleu(self.lin1(inputs))
         return self.lin2(self.dropout(hid))
-
-
-
 class InitializedConv1d(nn.Module):
     def __init__(self, in_channels, out_channels,
                  kernel_size=1, stride=1, padding=0, groups=1,

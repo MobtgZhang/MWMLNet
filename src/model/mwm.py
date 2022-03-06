@@ -103,7 +103,7 @@ class TransformerBlock(nn.Module):
         # Capsule Input Attention SFU Layer
         caps_e2w = self.e2w_capslayer(c_encode,c2w_encode)
         caps_e2f = self.e2f_capslayer(c_encode,c2f_encode)
-        concat_t,_ =self.selfatt(torch.cat([caps_e2w,caps_e2f],2))
+        concat_t,_ = self.selfatt(torch.cat([caps_e2w,caps_e2f],2))
         concat_t = self.gleu(self.ffn(self.gleu(concat_t)))
         # Capsule Output Attention SFU Layer
         _,w_att = self.e2w_att(c2w_encode)

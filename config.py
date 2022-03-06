@@ -19,8 +19,10 @@ def get_model_args():
     files.add_argument('--out-dir', type=str, default="./result",help='Directory of training/validation/test data')
     files.add_argument('--train-file', type=str,default='trainingset.json',help='Preprocessed train file')
     files.add_argument('--dev-file', type=str,default='validationset.json',help='Preprocessed vaild file')
+    files.add_argument('--test-file', type=str,default='testset.json',help='Preprocessed test file')
     files.add_argument('--embed-dir', type=str, default="./embedding",help='Directory of pre-trained embedding files')
     files.add_argument('--dataset', type=str, default="AIChallenger2018",help='The dataset of the training model.')
+    # CLUEmotionAnalysis2020,AIChallenger2018
     files.add_argument('--pretrained', type=str,default=None,help='The pretrained mode for the dataset.')
     files.add_argument('--embedding-file', type=str,default='cc.zh.300.vec',help='Chars space-separated pretrained embeddings file')
     files.add_argument('--processed-embedding-file', type=str,default='chars_embedding.pkl',help='Chars space-separated pretrained embeddings file')
@@ -42,8 +44,8 @@ def get_model_args():
     optim = parser.add_argument_group('Reader Optimization')
     optim.add_argument('--optim-method',type=str,default='Adam',help="Optimization method for the model.")
     optim.add_argument('--learning-rate',type=float,default=5e-7,help="Learning rate for the model.")
-    optim.add_argument('--momentum',type=float,default=0.8,help="Momentum for the model.")
-    optim.add_argument('--weight-decay',type=float,default=0.7,help="Weight-decay for the model.")
+    optim.add_argument('--momentum',type=float,default=0.2,help="Momentum for the model.")
+    optim.add_argument('--weight-decay',type=float,default=1e-3,help="Weight-decay for the model.")
     optim.add_argument('--rho',type=float,default=0.8,help="rho for the model.")
     optim.add_argument('--eps',type=float,default=0.7,help="eps for the model.")
     optim.add_argument('--grad-clipping', type=float, default=0.7,help='Gradient clipping')
@@ -54,7 +56,7 @@ def get_model_args():
     runtime.add_argument('--random-seed',type=int,default=1234,help='Random seed for the model training')
     runtime.add_argument('--expand-dictionary',action='store_true',help="Added the expand dictionary for the dataset.")
     # runtime.add_argument('--tune-partial',type=int,default=100,help="Tune the words partially.")
-    runtime.add_argument('--model-type',type=str,default="mwmlnet",help="The model name.")
+    runtime.add_argument('--model-type',type=str,default="MWMLNetLMFineGrind",help="The model name.")
     runtime.add_argument('--sort-by-len',action='store_false',help="The training the model whether sorted by length.")    
     runtime.add_argument('--batch-size',type=int,default=48,help="The batch size of training the model.")
     runtime.add_argument('--dev-batch-size',type=int,default=48,help="The batch size of dev the model.")
@@ -70,12 +72,26 @@ def set_default_args(args):
         Make sure the commandline arguments are initialized properly.
     """
     # Check critical files exist
+    if args.dataset.lower() == "aichallenger2018":
+        args.train_file = "trainingset.json"
+        args.dev_file = "validationset.json"
+        args.test_file = None
+    elif args.dataset.lower() == "cluemotionanalysis2020":
+        args.train_file = "train.json"
+        args.dev_file = "valid.json"
+        args.test_file = "test.json"
+    else:
+        pass
     args.train_file = os.path.join(args.out_dir,args.dataset,args.train_file)
     if not os.path.isfile(args.train_file):
         raise IOError('No such file: %s' % args.train_file)
     args.dev_file = os.path.join(args.out_dir,args.dataset,args.dev_file)
     if not os.path.isfile(args.dev_file):
         raise IOError('No such file: %s' % args.dev_file)
+    if args.test_file is not None:
+        args.test_file = os.path.join(args.out_dir,args.dataset,args.test_file)
+        if not os.path.isfile(args.test_file):
+            raise IOError('No such file: %s' % args.test_file)
     if args.embedding_file:
         args.embedding_file = os.path.join(args.embed_dir,args.embedding_file)
         if not os.path.isfile(args.embedding_file):

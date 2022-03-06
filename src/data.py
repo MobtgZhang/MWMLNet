@@ -8,35 +8,7 @@ from torch.utils.data import Dataset,Sampler
 
 logger = logging.getLogger()
 
-def vectorize(item_value,model):
-    idx = item_value['id']
-    features_mask = []
-    length = len(item_value['segments'])
-    for idx in range(length):
-        if len("".join(item_value['segments'][:idx]))>model.config["chars_max_length"]:
-            item_value['segments'] = item_value['segments'][:idx-1]
-            item_value["position"] = item_value['position'][:idx-1]
-            break
-    chars_segments = [model.chars_dict[word] for word in "".join(item_value['segments'])]
-    for pos,word in zip(item_value["position"],item_value['segments']):
-        features_mask += [model.features_dict[pos]]*len(word)
-    words_mask = []
-    for word in item_value['segments']:
-        if len(word)==1:
-            words_mask.append(model.bmes_dict['S'])
-        else:
-            words_mask.append(model.bmes_dict['B'])
-            words_mask += [model.bmes_dict['M']]*(len(word)-2)
-            words_mask.append(model.bmes_dict['E'])
-    labels = np.array(list(item_value['labels'].values())) + 2
-    data_dict = {
-        "idx":idx,
-        "chars_segments":chars_segments,
-        "words_mask":words_mask,
-        "features_mask":features_mask ,
-        "labels":labels
-    }
-    return data_dict
+
 
 class Dictionary:
     def __init__(self,words_list = None):
@@ -80,7 +52,8 @@ class Dictionary:
         with open(save_file,"w",encoding="utf-8") as wfp:
             data = {
                 "ind2token":self.ind2token,
-                "token2ind":self.token2ind
+                "token2ind":self.token2ind,
+                "words_flag":self.words_flag
             }
             json.dump(data,wfp)
     @staticmethod
@@ -90,6 +63,7 @@ class Dictionary:
             data = json.load(rfp)
             tp_dict.token2ind = data["token2ind"]
             tp_dict.ind2token = data["ind2token"]
+            tp_dict.words_flag = data["words_flag"]
             tp_dict.end_index = len(tp_dict.ind2token)
         return tp_dict
     def __contains__(self,word):
@@ -136,9 +110,80 @@ class AIChallenger2018Dataset(Dataset):
     def __len__(self):
         return len(self.examples)
     def __getitem__(self, index):
-        return  vectorize(self.examples[index], self.model)
+        return  self.vectorize(index)
     def lengths(self):
         return [len(ex['segments']) for ex in self.examples]
+    def vectorize(self,index):
+        item_value = self.examples[index]
+        idx = item_value['id']
+        features_mask = []
+        length = len(item_value['segments'])
+        for idx in range(length):
+            if len("".join(item_value['segments'][:idx]))>self.model.config["chars_max_length"]:
+                item_value['segments'] = item_value['segments'][:idx-1]
+                item_value["position"] = item_value['position'][:idx-1]
+                break
+        chars_segments = [self.model.chars_dict[word] for word in "".join(item_value['segments'])]
+        for pos,word in zip(item_value["position"],item_value['segments']):
+            features_mask += [self.model.features_dict[pos]]*len(word)
+        words_mask = []
+        for word in item_value['segments']:
+            if len(word)==1:
+                words_mask.append(self.model.bmes_dict['S'])
+            else:
+                words_mask.append(self.model.bmes_dict['B'])
+                words_mask += [self.model.bmes_dict['M']]*(len(word)-2)
+                words_mask.append(self.model.bmes_dict['E'])
+        labels = np.array(list(item_value['labels'].values())) + 2
+        data_dict = {
+            "idx":idx,
+            "chars_segments":chars_segments,
+            "words_mask":words_mask,
+            "features_mask":features_mask ,
+            "labels":labels
+        }
+        return data_dict
+class CLUEmotionAnalysis2020Dataset(Dataset):
+    def __init__(self, examples, model):
+        self.model = model
+        self.examples = examples
+    def __len__(self):
+        return len(self.examples)
+    def __getitem__(self, index):
+        return  self.vectorize(index)
+    def lengths(self):
+        return [len(ex['segments']) for ex in self.examples]
+    def vectorize(self,index):
+        item_value = self.examples[index]
+        idx = item_value['id']
+        features_mask = []
+        length = len(item_value['segments'])
+        for idx in range(length):
+            if len("".join(item_value['segments'][:idx]))>self.model.config["chars_max_length"]:
+                item_value['segments'] = item_value['segments'][:idx-1]
+                item_value["position"] = item_value['position'][:idx-1]
+                break
+        chars_segments = [self.model.chars_dict[word] for word in "".join(item_value['segments'])]
+        for pos,word in zip(item_value["position"],item_value['segments']):
+            features_mask += [self.model.features_dict[pos]]*len(word)
+        words_mask = []
+        for word in item_value['segments']:
+            if len(word)==1:
+                words_mask.append(self.model.bmes_dict['S'])
+            else:
+                words_mask.append(self.model.bmes_dict['B'])
+                words_mask += [self.model.bmes_dict['M']]*(len(word)-2)
+                words_mask.append(self.model.bmes_dict['E'])
+        labels = self.model.labels_dict[item_value["labels"]]
+
+        data_dict = {
+            "idx":idx,
+            "chars_segments":chars_segments,
+            "words_mask":words_mask,
+            "features_mask":features_mask ,
+            "labels":labels
+        }
+        return data_dict
 # ------------------------------------------------------------------------------
 # PyTorch sampler returning batched of sorted lengths (by doc and question).
 # ------------------------------------------------------------------------------

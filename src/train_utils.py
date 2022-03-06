@@ -26,7 +26,7 @@ def train(args,data_loader,model,global_stats,train_saver,device):
     # Checkpoint
     if args.checkpoint:
         model.checkpoint(args.model_file + '.checkpoint',global_stats['epoch'] + 1)
-def validate_official(args, data_loader, model, global_stats, saver,device):
+def validate_official(args, data_loader, model, global_stats, saver,device,fine_grind=True):
     """
         Run one full unofficial validation.
     """
@@ -43,9 +43,14 @@ def validate_official(args, data_loader, model, global_stats, saver,device):
             targets = targets.cpu().detach().numpy()
             predicts_list.append(predicts)
             targets_list.append(targets)
-    predicts = np.vstack(predicts_list)
-    targets = np.vstack(targets_list)
-    accuracies = eval_accuracies(predicts,targets,class_number=model.config["n_class"])
+    if fine_grind:
+        predicts = np.vstack(predicts_list)
+        targets = np.vstack(targets_list)
+        accuracies = eval_accuracies(predicts,targets,class_number=model.config["n_class"])
+    else:
+        predicts = np.hstack(predicts_list)
+        targets = np.hstack(targets_list)
+        accuracies = [f1_score(predicts,targets,average="macro"),accuracy_score(predicts,targets)]
     saver.add_f1(accuracies[0])
     saver.add_em(accuracies[1])
     saver.add_time(eval_time.time())

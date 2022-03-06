@@ -10,7 +10,7 @@ import torch
 from config import get_model_args,set_default_args
 from src.utils import load_dataset,init_from_scratch
 from src.model import DocReader
-from src.data import AIChallenger2018Dataset
+from src.data import AIChallenger2018Dataset,CLUEmotionAnalysis2020Dataset
 from src.data import SortedBatchSampler,batchfy,Timer,DataSaver
 from src.data import Dictionary
 from src.train_utils import train,validate_official
@@ -27,7 +27,9 @@ def main(args):
     logger.info('Num train examples = %d' %(len(train_exs)))
     dev_exs = load_dataset(args.dev_file)
     logger.info('Num dev examples = %d' %(len(dev_exs)))
-    
+    if args.test_file is not None:
+        test_exs = load_dataset(args.test_file)
+        logger.info('Num test examples = %d' %(len(test_exs)))
     # --------------------------------------------------------------------------
     # MODEL
     device = torch.device("cpu" if torch.cuda.is_available() and not args.no_cuda else "cuda:0")
@@ -54,7 +56,12 @@ def main(args):
                     model.load_embeddings(args.embedding_file,args.processed_embedding_file)
         else:
             logger.info('Training model from scratch...')
-            model = init_from_scratch(args, train_exs, dev_exs)
+            if args.dataset.lower() == "aichallenger2018":
+                model = init_from_scratch(args,train_exs+dev_exs)
+            elif args.dataset.lower() == "cluemotionanalysis2020":
+                model = init_from_scratch(args,train_exs+dev_exs+test_exs,labels_dict_flag=True)
+            else:
+                raise ValueError("Unknown dataset %s"%args.dataset)
             # Set up optimizer
             model.init_optimizer()
     # Use the GPU?
@@ -70,29 +77,36 @@ def main(args):
     logger.info('Make data loaders')
     
     if args.dataset.lower() == "aichallenger2018":
+        fine_grind = True
         train_dataset = AIChallenger2018Dataset(train_exs, model)
-        
-        if args.sort_by_len:
-            train_sampler = SortedBatchSampler(train_dataset.lengths(),
+        dev_dataset = AIChallenger2018Dataset(dev_exs, model)
+    elif args.dataset.lower() == "cluemotionanalysis2020":
+        fine_grind = False
+        train_dataset = CLUEmotionAnalysis2020Dataset(train_exs, model)
+        dev_dataset = CLUEmotionAnalysis2020Dataset(dev_exs, model)
+        test_dataset = CLUEmotionAnalysis2020Dataset(test_exs, model)
+    else:
+        raise ValueError("Unknown dataset %s"%args.dataset)
+    if args.sort_by_len:
+        train_sampler = SortedBatchSampler(train_dataset.lengths(),
                                                 args.batch_size,
                                                 shuffle=True)
-        else:
-            train_sampler = torch.utils.data.sampler.RandomSampler(train_dataset)
-        train_loader = torch.utils.data.DataLoader(
+    else:
+        train_sampler = torch.utils.data.sampler.RandomSampler(train_dataset)
+    train_loader = torch.utils.data.DataLoader(
             train_dataset,
             batch_size=args.batch_size,
             sampler=train_sampler,
             num_workers=args.data_workers,
             collate_fn=batchfy,
         )
-        dev_dataset = AIChallenger2018Dataset(dev_exs, model)
-        if args.sort_by_len:
-            dev_sampler = SortedBatchSampler(dev_dataset.lengths(),
+    if args.sort_by_len:
+        dev_sampler = SortedBatchSampler(dev_dataset.lengths(),
                                               args.dev_batch_size,
                                               shuffle=False)
-        else:
-            dev_sampler = torch.utils.data.sampler.SequentialSampler(dev_dataset)
-        dev_loader = torch.utils.data.DataLoader(
+    else:
+        dev_sampler = torch.utils.data.sampler.RandomSampler(dev_dataset)
+    dev_loader = torch.utils.data.DataLoader(
             dev_dataset,
             batch_size=args.dev_batch_size,
             sampler=dev_sampler,
@@ -100,8 +114,21 @@ def main(args):
             collate_fn=batchfy,
             #pin_memory=args.cuda,
         )
-    else:
-        raise ValueError("Unknown dataset %s"%args.dataset)
+    if args.test_file:
+        if args.sort_by_len:
+            dev_sampler = SortedBatchSampler(test_dataset.lengths(),
+                                              args.dev_batch_size,
+                                              shuffle=False)
+        else:
+            dev_sampler = torch.utils.data.sampler.RandomSampler(test_dataset)
+        test_loader = torch.utils.data.DataLoader(
+            test_dataset,
+            batch_size=args.dev_batch_size,
+            sampler=dev_sampler,
+            num_workers=args.data_workers,
+            collate_fn=batchfy,
+            #pin_memory=args.cuda,
+        )
     # -------------------------------------------------------------------------
     # PRINT CONFIG
     logger.info('-' * 100)
@@ -122,7 +149,7 @@ def main(args):
         train(args, train_loader,model,stats,train_saver,device)
         
         # Validate unofficial (train)
-        validate_official(args,train_loader,model,stats,train_dev_saver,device)
+        validate_official(args,train_loader,model,stats,train_dev_saver,device,fine_grind)
 
         # Validate unofficial (dev)
         result = validate_official(args, dev_loader, model, stats,dev_saver,device)
